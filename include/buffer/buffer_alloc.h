@@ -1,28 +1,28 @@
-
 #ifndef BUFFER_ALLOC_H
 #define BUFFER_ALLOC_H
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <stddef.h>
 
+#define HEAP_DEBUG                1
+#define MEMORY_ALIGN_MULTIPLE       4
 
-typedef struct memory_header{
-    struct memory_header *prev;
-    size_t size;
+#define __SIZE_TYPE__ long unsigned int
+typedef __SIZE_TYPE__ size_t;
+
+typedef struct _memory_header {
+    struct _memory_header *prev;
     size_t alloc;
-    struct memory_header *next;
+    size_t size;
+    struct _memory_header *next;
 } memory_header;
 
-void *buffer_malloc(size_t n, size_t size);
+void *buffer_malloc(const size_t size);
 void buffer_free(void *ptr);
 
 
-
-void display_all_header();
-void display_header(memory_header *header);
+void display_heap();
 
 #endif // BUFFER_ALLOC_H
 

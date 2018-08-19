@@ -1,179 +1,203 @@
 #include <buffer/buffer_alloc.h>
-#include <system/system.h>
 
-#define HEAP_BUFFER_LENGTH  512
-static char HEAP_BUFFER[HEAP_BUFFER_LENGTH];
-static memory_header *heap;
+#define HEAP_BUFFER_CONFIG_LENGTH   1024
 
-void buffer_alloc_init();
-void buffer_header_init();
-void *buffer_alloc(void *ptr, size_t len);
-void buffer_realloc(void *ptr);
-int verify_header(memory_header *header);
+static char HEAP[HEAP_BUFFER_CONFIG_LENGTH];
+static memory_header *heap = NULL;
 
-void *buffer_malloc(size_t n, size_t size)
+static void buffer_alloc_init();
+static void *buffer_alloc(memory_header *header, size_t size);
+static void buffer_realloc(void *ptr);
+void buffer_refresh();
+static size_t verify_header(memory_header *header);
+static void display_header(const memory_header *header);
+
+void *buffer_malloc(const size_t size)
 {
-    memory_header *cursor = heap;
-    memory_header *header = cursor->next;
+    memory_header *header = heap;
+    memory_header *cursor = NULL;
     void *ret = NULL;
 
-    size_t len = n * size;
-
-    if(cursor == NULL && header == NULL)
+    size_t len = size;
+    if(len % MEMORY_ALIGN_MULTIPLE)
     {
-        buffer_header_init();
-        cursor = heap;
+            len -= len % MEMORY_ALIGN_MULTIPLE;
+            len += MEMORY_ALIGN_MULTIPLE;
     }
-    else if(cursor == NULL)
-    {
-        cursor = header;
-        cursor->size = (void *)cursor - (void*)HEAP_BUFFER;
-    }
+    len += sizeof(memory_header);
 
-
-    if(n != 0 && (len/n) != size)
-        ret = NULL;
-    else
-    {
-        size_t len_alloc = sizeof(memory_header) + len;
-        while(cursor != NULL)
-        {
-            if(cursor->size > len_alloc && cursor->alloc == 0)
-            {
-                ret = buffer_alloc(cursor, len);
-                break;
-            }
-            cursor = cursor->next;
-        }
-    }
-    return ret;
-}
-
-void *buffer_alloc(void *ptr, size_t len)
-{
-    memory_header *cursor = ptr;
-    memory_header *header = NULL;
-    void *ret = NULL;
-
-    cursor->alloc = 1;
-    cursor->size = len + sizeof(memory_header);
-
-    header = cursor->next;
     if(header == NULL)
-    {
-        header = (memory_header *)((void*)cursor + cursor->size);
-        header->next = NULL;
-        header->alloc = 0;
-        size_t pOffset = (void*)cursor - (void*)heap;
-        header->size = HEAP_BUFFER_LENGTH - cursor->size - pOffset;
-        header->prev = cursor;
-        cursor->next = header;
-    }
-    else
-    {
-        header->prev = cursor;
-        cursor->next = header;
-    }
+        buffer_alloc_init();
 
-    ret = (void *)cursor + sizeof(memory_header);
-
-    return ret;
-}
-
-void buffer_free(void *ptr)
-{
-    memory_header *cursor = ptr;
-    cursor = (memory_header*)((void*)cursor - sizeof(memory_header));
-
-    if(verify_header(cursor) != 0)
-    {
-        error("buffer_free unlocated");
-    }
-    else
-    {
-        cursor->alloc = 0;
-        buffer_realloc(cursor);
-    }
-}
-
-void buffer_realloc(void *ptr)
-{
-    memory_header *cursor = ptr;
-    memory_header *header = NULL;
-    size_t pOffset = 0;
-
+    cursor = heap;
     while(cursor != NULL)
     {
-        header = cursor->prev;
-        if(header != NULL && header->alloc == 0)
+        if(cursor->size > len && (cursor->alloc == 0))
         {
-            if(cursor->alloc == 0)
-            {
-                pOffset = (void*)cursor - (void *)header + cursor->size;
-                header->size = pOffset;
-                header->next = cursor->next;
-                cursor->next = header;
-            }
+            cursor->alloc = 1;
+            cursor->size = len;
+            ret = buffer_alloc(cursor, len);
+            break;
         }
-
         cursor = cursor->next;
     }
-}
-void buffer_alloc_init()
-{
-    memset(&HEAP_BUFFER, 0, HEAP_BUFFER_LENGTH);
-    buffer_header_init();
+    len -= sizeof(memory_header);
+    if(ret != NULL)
+        memset(ret, 0, len);
 
+    return ret;
 }
 
-void buffer_header_init()
+static void *buffer_alloc(memory_header *ptr, size_t size)
 {
-    printf("HEAP_BUFFER %p\r\n", HEAP_BUFFER);
-    memset(&HEAP_BUFFER, 0, sizeof(memory_header));
-    memory_header *header = (memory_header *)HEAP_BUFFER;
+    memory_header *header = ptr;
+    memory_header *cursor = NULL;
+    void *ret = NULL;
+
+    cursor = header->next;
+    if(cursor == NULL)
+    {
+        cursor = (memory_header *)((void *)header + header->size);
+        cursor->alloc = 0;
+
+        size_t pOffset = (void *)header - (void *)heap;
+        cursor->size = HEAP_BUFFER_CONFIG_LENGTH - header->size - pOffset;
+        cursor->next = NULL;
+    }
+
+    header->next = cursor;
+    cursor->prev = header;
+
+    ret = (void *)header + sizeof(memory_header);
+
+    return ret;
+}
+
+void buffer_free(void* ptr)
+{
+    void *p = ptr;
+    p -= sizeof(memory_header);
+
+    memory_header *header = (memory_header *)p;
     header->alloc = 0;
-    header->size = HEAP_BUFFER_LENGTH - sizeof(memory_header);
-    header->prev = NULL;
-    header->next = 0;
 
-    heap = (memory_header *)HEAP_BUFFER;
+    if(verify_header(header) != 0)
+    {
+        printf("buffer_free unlocated\r\n");
+    }
+    else
+    {
+        buffer_realloc(header);
+    }
+
 }
 
-void display_all_header()
+void buffer_refresh()
 {
-    printf("DISPLAY ALL HEADER\r\n");
-    memory_header *cursor = heap;
+    memory_header *header = heap;
+    while (header != NULL) {
+        buffer_realloc(header);
+        header = header->next;
+    }
+}
+
+void buffer_realloc(void* ptr)
+{
+    memory_header *header = ptr;
+    memory_header *old = header;
+    memory_header *prev = header->prev;
+    memory_header *next = header->next;
+
+    // Regroup with block before
+    if((prev != NULL) && (prev->alloc == 0))
+    {
+        prev->size += header->size;
+
+        if(header->next != NULL)
+        {
+            prev->next = header->next;
+            header->next->prev = prev;
+            header = prev;
+        }
+
+        memset(old, 0, sizeof(memory_header));
+    }
+
+    // Regroup with block after
+    if((next != NULL) && (next->alloc == 0))
+    {
+        header->size += next->size;
+
+        if(next->next != NULL)
+        {
+            header->next = next->next;
+            next->next->prev = header;
+        }
+        else
+        {
+            next->prev = header;
+            header->next = NULL;
+        }
+        memset(next, 0, sizeof(memory_header));
+    }
+}
+
+size_t verify_header(memory_header* header)
+{
+    size_t result = 0;
+
+   if(header == NULL)
+       result = 1;
+
+   if(header->alloc > 1)
+        result = 1;
+
+   if(header->prev == header->next)
+       result = 1;
+
+   if((void *)header < (void *)HEAP)
+       result = 1;
+
+   if((void *)header > (void *)HEAP + HEAP_BUFFER_CONFIG_LENGTH)
+        result = 1;
+
+    return result;
+}
+
+static void buffer_alloc_init()
+{
+    memset(HEAP, 0, HEAP_BUFFER_CONFIG_LENGTH);
+    heap = (memory_header *)HEAP;
+    heap->alloc = 0;
+    heap->size = HEAP_BUFFER_CONFIG_LENGTH - sizeof(memory_header);
+    heap->prev = NULL;
+    heap->next = NULL;
+}
+
+void display_heap()
+{
+    printf("HEAP\r\n");
+    memory_header *cursor = (memory_header *)HEAP;
 
     while(cursor != NULL)
     {
         display_header(cursor);
-
         cursor = cursor->next;
     }
 }
 
-void display_header(memory_header *header)
+static void display_header(const memory_header* header)
 {
-    printf("\tADDRESS: %08x   \tPREV: %08x  \tNEXT: %08x    \tALLOC: %d   \tSIZE: %d\r\n",
-           header, header->prev, header->next, header->alloc, header->size);
-}
-
-int verify_header(memory_header *header)
-{
-    int result = 0;
-
-    if(header == NULL)
-        result = 1;
-
-    if(header->alloc > 1)
-        result = 1;
-
-    if(header->prev == header->next)
-        result = 1;
-
-    if((header < HEAP_BUFFER) || (header > HEAP_BUFFER + HEAP_BUFFER_LENGTH))
-        result = 1;
-
-    return result;
+#if HEAP_DEBUG
+    printf("\tADDR: %p  \tPREV: %p  \tNEXT: %p",
+           header,
+           header->prev,
+           header->next);
+    printf("\tALLOC: %lu  \tDATA_SIZE: %lu  \tSIZE: %lu",
+           header->alloc,
+           header->size - sizeof(memory_header),
+           header->size);
+    printf("\r\n");
+#endif
 }
 

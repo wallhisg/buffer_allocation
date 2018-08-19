@@ -6,9 +6,9 @@ LIBS		:=
 PROGRAMS	:=
 #======================================================================
 # MODULES
-MODULES		:= src/system src/buffer
+MODULES		:= src/buffer
 # LIBS
-MODULES		+= lib/
+MODULES		+= 
 # APP
 MODULES 	+= buffer_allocation
 
