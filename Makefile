@@ -7,9 +7,7 @@ PROGRAMS	:=
 #======================================================================
 # MODULES
 MODULES		:= src/buffer
-# LIBS
-MODULES		+= 
-# APP
+# API
 MODULES 	+= buffer_allocation
 
 INCLUDE_DIRS	:= include
