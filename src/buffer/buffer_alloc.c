@@ -18,7 +18,14 @@ void *buffer_malloc(const size_t size)
     memory_header *cursor = NULL;
     void *ret = NULL;
 
-    size_t len = size + 1;
+    size_t len;
+    if(sizeof(void *) == 2)
+        len = size + 2;     // 8/16 bit
+    else if(sizeof(void *) == 4)
+        len = size + 4;     // 32 bit
+    else if(sizeof(void *) == 8)
+        len = size + 8;     // 64 bit
+    
     if(len % MEMORY_ALIGN_MULTIPLE)
     {
             len -= len % MEMORY_ALIGN_MULTIPLE;
