@@ -8,8 +8,16 @@
 #define HEAP_DEBUG                1
 #define MEMORY_ALIGN_MULTIPLE       4
 
-#define __SIZE_TYPE__ long unsigned int
-typedef __SIZE_TYPE__ size_t;
+#define GCC 	1
+
+#if GCC
+    #define MEMORY_ALIGN_MULTIPLE   8   //  4 ~ cpu 32 bit
+#elif GCC_AVR                           //  8 ~ cpu 64 bit
+    #define MEMORY_ALIGN_MULTIPLE   2   //  cpu 8 bit
+#elif GCC_XTENSA
+    #define MEMORY_ALIGN_MULTIPLE   4   //  cpu 32 bit
+#endif
+
 
 typedef struct _memory_header {
     struct _memory_header *prev;
